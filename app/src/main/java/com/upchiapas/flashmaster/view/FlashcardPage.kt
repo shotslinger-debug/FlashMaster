@@ -1,9 +1,11 @@
 package com.upchiapas.flashmaster.view
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -19,29 +21,33 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.upchiapas.flashmaster.model.Flashcard
-import com.upchiapas.flashmaster.model.MasteryLevel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.upchiapas.flashmaster.view.components.AddCardDialog
 import com.upchiapas.flashmaster.view.components.CategoryChipsRow
 import com.upchiapas.flashmaster.view.components.FlashcardDisplayCard
 import com.upchiapas.flashmaster.view.components.ProgressOverviewCard
+import com.upchiapas.flashmaster.viewmodel.FlashcardViewModel
 
-// maquetado inicial de la pantalla con puro disenio estatico
+// pantalla principal que junta los composables y escucha el viewmodel
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FlashcardPage() {
-    // datos de ejemplo para visualizar el disenio y maquetado de componentes
-    val sampleCategories = listOf("Todas", "Kotlin", "Compose", "Arquitectura")
-    val sampleCard = Flashcard(
-        id = "1",
-        question = "¿Que es una Data Class en Kotlin y que metodos genera sola?",
-        answer = "Es una clase para contener datos. Genera toString, copy, equals, hashCode y componentN automaticamente.",
-        category = "Kotlin",
-        mastery = MasteryLevel.EN_PROCESO
-    )
+fun FlashcardPage(
+    viewModel: FlashcardViewModel = viewModel()
+) {
+    // observo el estado reactivo con ciclo de vida
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
+    val tarjetaActual = if (uiState.filteredCards.isNotEmpty() && uiState.currentCardIndex in uiState.filteredCards.indices) {
+        uiState.filteredCards[uiState.currentCardIndex]
+    } else {
+        null
+    }
 
     Scaffold(
         topBar = {
@@ -68,7 +74,7 @@ fun FlashcardPage() {
         },
         floatingActionButton = {
             FloatingActionButton(
-                onClick = {},
+                onClick = { viewModel.openAddDialog() },
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
                 shape = RoundedCornerShape(16.dp)
@@ -88,42 +94,58 @@ fun FlashcardPage() {
         ) {
             item {
                 Spacer(modifier = Modifier.height(8.dp))
-                // selector visual de temas
+                // selector de temas o categorias
                 CategoryChipsRow(
-                    categories = sampleCategories,
-                    selectedCategory = "Todas",
-                    onCategorySelected = {}
+                    categories = uiState.availableCategories,
+                    selectedCategory = uiState.selectedCategory,
+                    onCategorySelected = { viewModel.selectCategory(it) }
                 )
             }
 
             item {
-                // resumen visual del progreso con barrita
+                // resumen del progreso con barrita
                 ProgressOverviewCard(
-                    masteryPercentage = 0.42f,
-                    countMastered = 5,
-                    countInProcess = 4,
-                    countToReview = 3,
-                    onResetClick = {}
+                    masteryPercentage = uiState.masteryPercentage,
+                    countMastered = uiState.countMastered,
+                    countInProcess = uiState.countInProcess,
+                    countToReview = uiState.countToReview,
+                    onResetClick = { viewModel.resetProgress() }
                 )
             }
 
             item {
                 // tarjeta interactiva central
                 FlashcardDisplayCard(
-                    card = sampleCard,
-                    isAnswerRevealed = true,
-                    currentIndex = 2,
-                    totalCards = 12,
-                    onToggleReveal = {},
-                    onMasterySelected = {},
-                    onPreviousClick = {},
-                    onNextClick = {}
+                    card = tarjetaActual,
+                    isAnswerRevealed = uiState.isAnswerRevealed,
+                    currentIndex = uiState.currentCardIndex,
+                    totalCards = uiState.filteredCards.size,
+                    onToggleReveal = { viewModel.toggleRevealAnswer() },
+                    onMasterySelected = { viewModel.setMastery(it) },
+                    onPreviousClick = { viewModel.previousCard() },
+                    onNextClick = { viewModel.nextCard() }
                 )
             }
 
             item {
+                // espacio abajo para que el boton flotante no tape nada
                 Spacer(modifier = Modifier.height(72.dp))
             }
         }
+
+        // dialogo para registrar una pregunta nueva
+        AddCardDialog(
+            isOpen = uiState.isAddDialogOpen,
+            questionText = uiState.newQuestionInput,
+            answerText = uiState.newAnswerInput,
+            selectedCategory = uiState.newCategoryInput,
+            availableCategories = uiState.availableCategories,
+            errorMessage = uiState.inputErrorMessage,
+            onQuestionChange = { viewModel.onQuestionChange(it) },
+            onAnswerChange = { viewModel.onAnswerChange(it) },
+            onCategoryChange = { viewModel.onCategoryChange(it) },
+            onConfirm = { viewModel.saveNewCard() },
+            onDismiss = { viewModel.closeAddDialog() }
+        )
     }
 }

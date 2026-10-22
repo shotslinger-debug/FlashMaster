@@ -75,11 +75,12 @@ fun AddCardDialog(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // entrada de la pregunta
+                // entrada de la pregunta con validacion visual de error
                 OutlinedTextField(
                     value = questionText,
                     onValueChange = onQuestionChange,
                     label = { Text("Pregunta o concepto") },
+                    isError = errorMessage != null && questionText.isBlank(),
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(10.dp),
                     maxLines = 3
@@ -87,11 +88,12 @@ fun AddCardDialog(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // entrada de la respuesta
+                // entrada de la respuesta con validacion visual de error
                 OutlinedTextField(
                     value = answerText,
                     onValueChange = onAnswerChange,
                     label = { Text("Respuesta correcta") },
+                    isError = errorMessage != null && answerText.isBlank(),
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(10.dp),
                     maxLines = 3

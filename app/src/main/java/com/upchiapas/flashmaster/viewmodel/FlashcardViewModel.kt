@@ -169,12 +169,12 @@ class FlashcardViewModel(
         _uiState.update { it.copy(newCategoryInput = cat) }
     }
 
-    // valida y guarda la tarjeta en el repositorio
-    fun saveNewCard() {
+    // valida y guarda la tarjeta en el repositorio, retorna true si fue exitoso
+    fun saveNewCard(): Boolean {
         val estado = _uiState.value
         if (estado.newQuestionInput.trim().isEmpty() || estado.newAnswerInput.trim().isEmpty()) {
             _uiState.update { it.copy(inputErrorMessage = "debes llenar la pregunta y respuesta") }
-            return
+            return false
         }
 
         val nueva = Flashcard(
@@ -214,6 +214,7 @@ class FlashcardViewModel(
             )
         }
         recalcularMetricas()
+        return true
     }
 
     // calcula el porcentaje de dominio y contadores

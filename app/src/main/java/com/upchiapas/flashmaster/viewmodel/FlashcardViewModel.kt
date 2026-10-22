@@ -1,6 +1,7 @@
 package com.upchiapas.flashmaster.viewmodel
 
 import androidx.lifecycle.ViewModel
+import com.upchiapas.flashmaster.data.repository.FlashcardRepository
 import com.upchiapas.flashmaster.model.Flashcard
 import com.upchiapas.flashmaster.model.FlashcardUiState
 import com.upchiapas.flashmaster.model.MasteryLevel
@@ -10,45 +11,26 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import java.util.UUID
 
-// viewmodel principal que controla la logica y datos en memoria
-class FlashcardViewModel : ViewModel() {
+// viewmodel principal que controla la logica y se comunica con el repository
+class FlashcardViewModel(
+    private val repository: FlashcardRepository
+) : ViewModel() {
 
-    // backing property privada para no romper la arquitecura
+    // backing property privada para el flujo unidireccional
     private val _uiState = MutableStateFlow(FlashcardUiState())
     val uiState: StateFlow<FlashcardUiState> = _uiState.asStateFlow()
 
     init {
-        // aqui cargo las preguntas base directo en memoria
-        cargarPreguntasIniciales()
+        // cargo las preguntas desde el repositorio
+        cargarTarjetas()
     }
 
-    // funcion para meter las tarjetas precargadas de la materia
-    private fun cargarPreguntasIniciales() {
-        val tarjetasSemilla = listOf(
-            // preguntas de kotlin
-            Flashcard("k1", "¿Que palabra clave se usa en Kotlin para declarar una variable inmutable?", "val", "Kotlin"),
-            Flashcard("k2", "¿Cual es la diferencia principal entre val y var?", "val no permite reasignacion despues de su inicializacion y var si", "Kotlin"),
-            Flashcard("k3", "¿Que es una data class y que metodos genera sola?", "sirve para guardar datos y genera toString copy equals hashcode automaticamente", "Kotlin"),
-            Flashcard("k4", "¿Como se maneja la seguridad contra nulos en Kotlin?", "usando el signo de interrogacion (?) en el tipo de dato y el operador elvis (?:)", "Kotlin"),
-
-            // preguntas de compose
-            Flashcard("c1", "¿Que es la recomposicion en Jetpack Compose?", "es el proceso donde compose vuelve a ejecutar las funciones composables que dependen de un estado que cambio", "Compose"),
-            Flashcard("c2", "¿Que significa que un composable sea Stateless?", "que no guarda estado interno y recibe sus valores por parametros y notifica con eventos", "Compose"),
-            Flashcard("c3", "¿Para que se usa la funcion remember?", "para preservar un valor o estado en memoria a traves de las recomposiciones", "Compose"),
-            Flashcard("c4", "¿Cual es la ventaja de LazyColumn sobre Column normal?", "lazycolumn solo renderiza los elementos visibles en la pantalla para ahorrar memoria", "Compose"),
-
-            // preguntas de arquitectura
-            Flashcard("a1", "¿Cual es el rol principal del ViewModel en MVVM?", "separar la logica de la vista y retener el estado ante giros de pantalla", "Arquitectura"),
-            Flashcard("a2", "¿Que es el patron UDF (Unidirectional Data Flow)?", "el estado baja del viewmodel a la ui y los eventos suben de la ui al viewmodel", "Arquitectura"),
-            Flashcard("a3", "¿Que ventaja ofrece StateFlow sobre LiveData en Compose?", "stateflow es nativo de kotlin coroutines y siempre tiene un valor inicial garantizado", "Arquitectura"),
-            Flashcard("a4", "¿Para que sirve la Backing Property (_uiState y uiState)?", "para que la ui solo pueda leer el estado y no modificarlo directamente", "Arquitectura")
-        )
-
-        _uiState.update { estadoActual ->
-            val listaFiltrada = tarjetasSemilla
-            estadoActual.copy(
-                cards = tarjetasSemilla,
-                filteredCards = listaFiltrada
+    private fun cargarTarjetas() {
+        val tarjetas = repository.getFlashcards()
+        _uiState.update { estado ->
+            estado.copy(
+                cards = tarjetas,
+                filteredCards = tarjetas
             )
         }
         recalcularMetricas()
@@ -67,14 +49,11 @@ class FlashcardViewModel : ViewModel() {
 
         val tarjetaActual = listaFiltrada[estadoActual.currentCardIndex]
 
-        // actualizo el nivel en la lista general
-        val tarjetasActualizadas = estadoActual.cards.map { tarjeta ->
-            if (tarjeta.id == tarjetaActual.id) {
-                tarjeta.copy(mastery = level)
-            } else {
-                tarjeta
-            }
-        }
+        // actualizo el estado en el repositorio
+        repository.updateMastery(tarjetaActual.id, level)
+
+        // obtengo la lista actualizada del repositorio
+        val tarjetasActualizadas = repository.getFlashcards()
 
         // saco la nueva lista filtrada
         val nuevaFiltrada = if (estadoActual.selectedCategory == "Todas") {
@@ -121,7 +100,7 @@ class FlashcardViewModel : ViewModel() {
 
     // filtra las tarjetas por el chip que presiono el usuario
     fun selectCategory(category: String) {
-        val todas = _uiState.value.cards
+        val todas = repository.getFlashcards()
         val filtradas = if (category == "Todas") {
             todas
         } else {
@@ -131,6 +110,7 @@ class FlashcardViewModel : ViewModel() {
         _uiState.update {
             it.copy(
                 selectedCategory = category,
+                cards = todas,
                 filteredCards = filtradas,
                 currentCardIndex = 0,
                 isAnswerRevealed = false
@@ -139,11 +119,10 @@ class FlashcardViewModel : ViewModel() {
         recalcularMetricas()
     }
 
-    // reinicia el progreso de las tarjetas a cero para volver a practicar
+    // reinicia el progreso de las tarjetas mediante el repositorio
     fun resetProgress() {
-        val reiniciadas = _uiState.value.cards.map {
-            it.copy(mastery = MasteryLevel.POR_REPASAR)
-        }
+        repository.resetProgress()
+        val reiniciadas = repository.getFlashcards()
         val filtradas = if (_uiState.value.selectedCategory == "Todas") {
             reiniciadas
         } else {
@@ -190,7 +169,7 @@ class FlashcardViewModel : ViewModel() {
         _uiState.update { it.copy(newCategoryInput = cat) }
     }
 
-    // valida y agrega la tarjeta inventada por el usuario en memoria
+    // valida y guarda la tarjeta en el repositorio
     fun saveNewCard() {
         val estado = _uiState.value
         if (estado.newQuestionInput.trim().isEmpty() || estado.newAnswerInput.trim().isEmpty()) {
@@ -207,7 +186,10 @@ class FlashcardViewModel : ViewModel() {
             isCustom = true
         )
 
-        val nuevasTarjetas = estado.cards + nueva
+        // guardo en el repositorio
+        repository.addFlashcard(nueva)
+
+        val nuevasTarjetas = repository.getFlashcards()
         val nuevasCategorias = if (estado.availableCategories.contains(nueva.category)) {
             estado.availableCategories
         } else {
